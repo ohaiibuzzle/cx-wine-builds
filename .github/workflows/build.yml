@@ -1,0 +1,140 @@
+name: Build CrossOver Wine
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  CX_VERSION: 26.3.0
+  LLVM_MINGW_VERSION: "20260922"
+  FFMPEG_VERSION: 9.0.2
+  FFMPEG_SHA256: 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
+  # Wine and the self-built deps (FFmpeg, GStreamer) share one prefix so the
+  # artifact is a single tree. Homebrew libs are still referenced from /usr/local.
+  WINE_PREFIX: /opt/wine-cx
+  HOMEBREW_NO_ANALYTICS: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+
+jobs:
+  build:
+    # x86_64 host so the result runs under Rosetta like real CrossOver.
+    # macos-15-intel is the last free Intel runner; Homebrew only has
+    # x86_64 bottles up to Sonoma, which still install on Sequoia.
+    runs-on: macos-15-intel
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Prepare install prefix
+        run: |
+          sudo mkdir -p "$WINE_PREFIX"
+          sudo chown "$USER" "$WINE_PREFIX"
+          echo "CX_SRC=$RUNNER_TEMP/sources" >> "$GITHUB_ENV"
+          echo "LLVM_MINGW=$RUNNER_TEMP/llvm-mingw" >> "$GITHUB_ENV"
+
+      - name: Cache CrossOver source tarball
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/crossover-sources-${{ env.CX_VERSION }}.tar.gz
+          key: cx-src-${{ env.CX_VERSION }}
+
+      - name: Fetch CrossOver sources
+        run: |
+          tarball="$RUNNER_TEMP/crossover-sources-$CX_VERSION.tar.gz"
+          [ -f "$tarball" ] || curl -fL --retry 3 -o "$tarball" \
+            "https://media.codeweavers.com/pub/crossover/source/crossover-sources-$CX_VERSION.tar.gz"
+          tar -xzf "$tarball" -C "$RUNNER_TEMP" sources/wine sources/gstreamer
+
+      - name: Apply Wine patches
+        working-directory: ${{ runner.temp }}/sources/wine
+        run: |
+          shopt -s nullglob
+          for p in "$GITHUB_WORKSPACE"/patches/wine/*.patch; do
+            echo "::group::$(basename "$p")"
+            git apply -v "$p"
+            echo "::endgroup::"
+          done
+
+      - name: Cache llvm-mingw
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/llvm-mingw
+          key: llvm-mingw-${{ env.LLVM_MINGW_VERSION }}-macos-universal
+
+      - name: Fetch llvm-mingw
+        run: |
+          if [ ! -x "$LLVM_MINGW/bin/x86_64-w64-mingw32-clang" ]; then
+            name="llvm-mingw-$LLVM_MINGW_VERSION-ucrt-macos-universal"
+            curl -fL --retry 3 -o "$RUNNER_TEMP/$name.tar.xz" \
+              "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_VERSION/$name.tar.xz"
+            tar -xJf "$RUNNER_TEMP/$name.tar.xz" -C "$RUNNER_TEMP"
+            mv "$RUNNER_TEMP/$name" "$LLVM_MINGW"
+          fi
+          "$LLVM_MINGW/bin/x86_64-w64-mingw32-clang" --version
+          "$LLVM_MINGW/bin/i686-w64-mingw32-clang" --version
+
+      - name: Install Homebrew dependencies
+        run: ./scripts/install-brew-deps.sh
+
+      - name: Compute deps cache key
+        id: depskey
+        run: |
+          # FFmpeg and GStreamer link against these Homebrew kegs.
+          brew_hash=$(brew list --versions glib gettext dav1d | shasum -a 256 | cut -c1-16)
+          echo "key=deps-${{ env.CX_VERSION }}-ffmpeg-${{ env.FFMPEG_VERSION }}-${brew_hash}-${{ hashFiles('scripts/build-ffmpeg.sh', 'scripts/build-gstreamer.sh') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore FFmpeg/GStreamer
+        id: depscache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.WINE_PREFIX }}
+          key: ${{ steps.depskey.outputs.key }}
+
+      - name: Build FFmpeg
+        if: steps.depscache.outputs.cache-hit != 'true'
+        run: ./scripts/build-ffmpeg.sh
+
+      - name: Build GStreamer (CrossOver-bundled)
+        if: steps.depscache.outputs.cache-hit != 'true'
+        run: ./scripts/build-gstreamer.sh
+
+      # Saved explicitly (not via the post step) so Wine itself never lands in the cache.
+      - name: Save FFmpeg/GStreamer
+        if: steps.depscache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.WINE_PREFIX }}
+          key: ${{ steps.depskey.outputs.key }}
+
+      - name: Configure Wine
+        run: ./scripts/configure-wine.sh
+
+      - name: Upload configure logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: configure-logs
+          path: |
+            ${{ runner.temp }}/wine-build/config.log
+            ${{ runner.temp }}/wine-build/configure.out
+          if-no-files-found: ignore
+
+      - name: Build Wine
+        working-directory: ${{ runner.temp }}/wine-build
+        run: make -j"$(sysctl -n hw.ncpu)"
+
+      - name: Install Wine
+        working-directory: ${{ runner.temp }}/wine-build
+        run: make install
+
+      - name: Package
+        run: |
+          tar -C "$(dirname "$WINE_PREFIX")" -cJf "$RUNNER_TEMP/wine-cx-$CX_VERSION-x86_64.tar.xz" "$(basename "$WINE_PREFIX")"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wine-cx-${{ env.CX_VERSION }}-x86_64
+          path: ${{ runner.temp }}/wine-cx-${{ env.CX_VERSION }}-x86_64.tar.xz
+          compression-level: 0
