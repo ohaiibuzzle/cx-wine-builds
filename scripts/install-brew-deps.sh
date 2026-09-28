@@ -35,5 +35,12 @@ media_deps=(
 )
 
 brew update --quiet || true
+
+# The runner image hand-symlinks openssl@1.1 into /usr/local (not via
+# `brew link`, so `brew unlink` removes nothing). Those links make linking a
+# freshly built openssl@3 (pulled in via meson/python) fail the whole install.
+find /usr/local/bin /usr/local/include /usr/local/lib -maxdepth 1 -type l \
+    -lname '*openssl@1.1*' -print -delete
+
 brew install --quiet "${build_tools[@]}" "${wine_deps[@]}" "${media_deps[@]}"
 brew list --versions
