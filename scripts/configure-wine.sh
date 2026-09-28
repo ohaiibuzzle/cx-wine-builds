@@ -47,7 +47,6 @@ required=(
     --with-gphoto
     --with-ffmpeg
     --with-gstreamer
-    --with-dbus
 )
 # Not passed as --with-opengl: that would also make the missing EGL fatal.
 # EGL is only used by the X11/Wayland drivers; winemac uses OpenGL.framework.
@@ -65,11 +64,13 @@ not_on_macos=(
     --without-hwloc     # only used on FreeBSD
     --without-netapi    # Samba: no x86_64 bottle, huge source build
     --without-pulse     # winepulse uses robust mutexes, which macOS lacks
+    --without-dbus      # only talks to UDisks/NetworkManager/BlueZ; macOS uses DiskArbitration
 )
 
 "$CX_SRC/wine/configure" \
     --prefix="$WINE_PREFIX" \
     --enable-archs=i386,x86_64 \
+    --disable-win16 \
     --disable-tests \
     "${required[@]}" \
     "${not_on_macos[@]}" \

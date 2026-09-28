@@ -25,7 +25,6 @@ wine_deps=(
     sane-backends   # scanners
     libgphoto2      # cameras
     unixodbc        # odbc32
-    dbus
 )
 
 media_deps=(
