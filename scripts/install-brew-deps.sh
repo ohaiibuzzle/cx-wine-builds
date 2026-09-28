@@ -25,7 +25,6 @@ wine_deps=(
     sane-backends   # scanners
     libgphoto2      # cameras
     unixodbc        # odbc32
-    pulseaudio      # winepulse.drv (CoreAudio is still the default)
     dbus
 )
 

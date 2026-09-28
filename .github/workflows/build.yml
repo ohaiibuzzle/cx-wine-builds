@@ -9,6 +9,12 @@ env:
   LLVM_MINGW_VERSION: "20260922"
   FFMPEG_VERSION: 9.0.2
   FFMPEG_SHA256: 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
+  CCACHE_VERSION: 4.14.1
+  CCACHE_SHA256: c279fa81e2e806b4d9e64d4a06cb569a84ef54151feef796e5d4f4e95a464563
+  CCACHE_COMPILERCHECK: content
+  CCACHE_MAXSIZE: 3G
+  # Sources are re-extracted every run; don't let fresh mtimes defeat direct mode.
+  CCACHE_SLOPPINESS: include_file_mtime,include_file_ctime
   # Wine and the self-built deps (FFmpeg, GStreamer) share one prefix so the
   # artifact is a single tree. Homebrew libs are still referenced from /usr/local.
   WINE_PREFIX: /opt/wine-cx
@@ -31,8 +37,13 @@ jobs:
         run: |
           sudo mkdir -p "$WINE_PREFIX"
           sudo chown "$USER" "$WINE_PREFIX"
-          echo "CX_SRC=$RUNNER_TEMP/sources" >> "$GITHUB_ENV"
-          echo "LLVM_MINGW=$RUNNER_TEMP/llvm-mingw" >> "$GITHUB_ENV"
+          {
+            echo "CX_SRC=$RUNNER_TEMP/sources"
+            echo "LLVM_MINGW=$RUNNER_TEMP/llvm-mingw"
+            echo "BREW_CACHE=$RUNNER_TEMP/brew-cache"
+            echo "CCACHE_DIR=$RUNNER_TEMP/ccache"
+            echo "CCACHE_BASEDIR=$RUNNER_TEMP"
+          } >> "$GITHUB_ENV"
 
       - name: Cache CrossOver source tarball
         uses: actions/cache@v6
@@ -78,12 +89,45 @@ jobs:
           # every later step (make, make install) needs them on PATH.
           echo "$LLVM_MINGW/bin" >> "$GITHUB_PATH"
 
+      - name: Install ccache
+        run: |
+          name="ccache-$CCACHE_VERSION-darwin"
+          curl -fL --retry 3 -o "$RUNNER_TEMP/$name.tar.gz" \
+            "https://github.com/ccache/ccache/releases/download/v$CCACHE_VERSION/$name.tar.gz"
+          echo "$CCACHE_SHA256  $RUNNER_TEMP/$name.tar.gz" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/ccache-bin"
+          tar -xzf "$RUNNER_TEMP/$name.tar.gz" -C "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/$name/ccache" "$RUNNER_TEMP/ccache-bin/"
+          echo "$RUNNER_TEMP/ccache-bin" >> "$GITHUB_PATH"
+
+      # Rolling caches: every run saves under a new key, restores the newest.
+      - name: Restore Homebrew source builds
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/brew-cache
+          key: brew-src-${{ github.run_id }}
+          restore-keys: brew-src-
+
       - name: Install Homebrew dependencies
         run: |
+          # Best effort: a bad restore just means building from source again.
+          ./scripts/brew-cellar-cache.sh restore "$BREW_CACHE" ||
+            echo "::warning::Restoring cached Homebrew kegs failed; building from source"
           ./scripts/install-brew-deps.sh
           # bison and flex are keg-only; Wine's tools need them at make time too.
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+
+      - name: Snapshot Homebrew source builds
+        id: brewsnap
+        run: ./scripts/brew-cellar-cache.sh save "$BREW_CACHE" >> "$GITHUB_OUTPUT"
+
+      - name: Save Homebrew source builds
+        if: steps.brewsnap.outputs.changed == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/brew-cache
+          key: brew-src-${{ github.run_id }}
 
       - name: Compute deps cache key
         id: depskey
@@ -115,6 +159,13 @@ jobs:
           path: ${{ env.WINE_PREFIX }}
           key: ${{ steps.depskey.outputs.key }}
 
+      - name: Restore ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ccache-${{ github.run_id }}
+          restore-keys: ccache-
+
       - name: Configure Wine
         run: ./scripts/configure-wine.sh
 
@@ -129,8 +180,23 @@ jobs:
           if-no-files-found: ignore
 
       - name: Build Wine
+        id: winebuild
         working-directory: ${{ runner.temp }}/wine-build
-        run: make -j"$(sysctl -n hw.ncpu)"
+        run: |
+          ccache --zero-stats
+          make -j"$(sysctl -n hw.ncpu)"
+
+      - name: ccache stats
+        if: always() && steps.winebuild.outcome != 'skipped'
+        run: ccache --show-stats
+
+      # Saved even when the build fails, so a half-finished build still warms the cache.
+      - name: Save ccache
+        if: always() && steps.winebuild.outcome != 'skipped'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ccache-${{ github.run_id }}
 
       - name: Install Wine
         working-directory: ${{ runner.temp }}/wine-build

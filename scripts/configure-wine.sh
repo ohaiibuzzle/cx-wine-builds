@@ -15,6 +15,14 @@ cd "$build"
 export PATH="$LLVM_MINGW/bin:$brew_prefix/opt/bison/bin:$brew_prefix/opt/flex/bin:$PATH"
 export PKG_CONFIG_PATH="$WINE_PREFIX/lib/pkgconfig:$brew_prefix/opt/krb5/lib/pkgconfig:$brew_prefix/lib/pkgconfig"
 export KRB5_CONFIG="$brew_prefix/opt/krb5/bin/krb5-config"
+
+# configure only probes for i386_CC/x86_64_CC when they're unset, so this
+# routes the PE side through ccache as well as the host compiler.
+if command -v ccache >/dev/null; then
+    export CC="ccache clang"
+    export i386_CC="ccache i686-w64-mingw32-clang"
+    export x86_64_CC="ccache x86_64-w64-mingw32-clang"
+fi
 # No CPPFLAGS/LDFLAGS: /usr/local is already on clang's and ld64's default
 # search paths on Intel, and an explicit -I would shadow pkg-config's.
 
@@ -37,7 +45,6 @@ required=(
     --with-fontconfig
     --with-sane
     --with-gphoto
-    --with-pulse
     --with-ffmpeg
     --with-gstreamer
     --with-dbus
@@ -57,6 +64,7 @@ not_on_macos=(
     --without-inotify   # no libinotify-kqueue in Homebrew
     --without-hwloc     # only used on FreeBSD
     --without-netapi    # Samba: no x86_64 bottle, huge source build
+    --without-pulse     # winepulse uses robust mutexes, which macOS lacks
 )
 
 "$CX_SRC/wine/configure" \
