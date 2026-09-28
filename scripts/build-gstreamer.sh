@@ -20,12 +20,13 @@ common=(
     --wrap-mode=nofallback
     -Dexamples=disabled
     -Dtests=disabled
-    -Dintrospection=disabled
     -Ddoc=disabled
     -Dnls=disabled
 )
+# gst-plugins-good has no introspection option, so that one is per-project.
 
 meson setup "$build/gstreamer" "$src/gstreamer" "${common[@]}" \
+    -Dintrospection=disabled \
     -Dptp-helper=disabled \
     -Dlibunwind=disabled \
     -Dlibdw=disabled \
@@ -33,6 +34,7 @@ meson setup "$build/gstreamer" "$src/gstreamer" "${common[@]}" \
 meson install -C "$build/gstreamer"
 
 meson setup "$build/base" "$src/gst-plugins-base" "${common[@]}" \
+    -Dintrospection=disabled \
     -Dauto_features=disabled \
     -Dadder=enabled \
     -Dapp=enabled \
