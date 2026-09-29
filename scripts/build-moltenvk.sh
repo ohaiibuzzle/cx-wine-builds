@@ -18,6 +18,13 @@ cd "$work/src"
 # URL from this tree's git remote (there is none). With it, it rm -rf's
 # External/SPIRV-Cross before symlinking the root, so move the fork out first.
 mv External/SPIRV-Cross "$work/SPIRV-Cross"
+
+# The 1.2.10 projects target macOS 10.15, which newer Xcodes reject (Xcode 27
+# accepts 12.0+). XCODE_XCCONFIG_FILE overrides project settings for every
+# xcodebuild call, including the ones fetchDependencies makes internally.
+echo "MACOSX_DEPLOYMENT_TARGET = 12.0" > "$work/override.xcconfig"
+export XCODE_XCCONFIG_FILE="$work/override.xcconfig"
+
 ./fetchDependencies --macos --spirv-cross-root "$work/SPIRV-Cross"
 
 make macos

@@ -28,10 +28,3 @@ for macOS, without X11.
 
 `scripts/configure-wine.sh` passes every enabled feature as `--with-*`, so a
 missing dependency fails configure instead of being silently dropped.
-
-## Patches
-
-| Patch | Content |
-|---|---|
-| `0001-ws2_32-hoyoverse-game-hacks.patch` | `StarRail.exe` (or any exe with `WINE_ENABLE_DISCONNECT=1`): the first `connect()` is refused; opt out with `WINE_DISABLE_DISCONNECT=1`. `GenshinImpact.exe` / `YuanShen.exe` / `ZenlessZoneZero.exe` with `WINE_ENABLE_TIMEOUT_FIX=1`: patches curl's timeout in memory to 60 s |
-
