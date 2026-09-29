@@ -5,14 +5,19 @@
 # configure fail outright instead of printing a notice when it's missing.
 # Everything that can't work on macOS (or is deliberately skipped) is --without-*.
 set -euo pipefail
-: "${WINE_PREFIX:?}" "${CX_SRC:?}" "${LLVM_MINGW:?}"
+: "${WINE_PREFIX:?}" "${CX_SRC:?}"
 
 brew_prefix="$(brew --prefix)"
 build="${RUNNER_TEMP:-/tmp}/wine-build"
 mkdir -p "$build"
 cd "$build"
 
-export PATH="$LLVM_MINGW/bin:$brew_prefix/opt/bison/bin:$brew_prefix/opt/flex/bin:$PATH"
+# The llvm-mingw *-w64-mingw32-* tools must already be on PATH (the workflow
+# links just those). Never put llvm-mingw's bin/ itself on PATH: its bare
+# `clang` would replace Apple's as the host compiler.
+command -v x86_64-w64-mingw32-clang >/dev/null ||
+    { echo "llvm-mingw's *-w64-mingw32-* tools are not on PATH" >&2; exit 1; }
+export PATH="$brew_prefix/opt/bison/bin:$brew_prefix/opt/flex/bin:$PATH"
 export PKG_CONFIG_PATH="$WINE_PREFIX/lib/pkgconfig:$brew_prefix/opt/krb5/lib/pkgconfig:$brew_prefix/lib/pkgconfig"
 export KRB5_CONFIG="$brew_prefix/opt/krb5/bin/krb5-config"
 

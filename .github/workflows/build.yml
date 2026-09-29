@@ -85,9 +85,13 @@ jobs:
           fi
           "$LLVM_MINGW/bin/x86_64-w64-mingw32-clang" --version
           "$LLVM_MINGW/bin/i686-w64-mingw32-clang" --version
-          # Wine's Makefile calls the cross compilers by bare name, so
-          # every later step (make, make install) needs them on PATH.
-          echo "$LLVM_MINGW/bin" >> "$GITHUB_PATH"
+          # Wine's Makefile calls the cross tools by bare name, so every later
+          # step needs them on PATH. Only the *-w64-mingw32-* names are exposed:
+          # llvm-mingw's bin/ also has a bare `clang` that would shadow Apple's
+          # (and has no macOS SDK). The wrappers resolve symlinks back to bin/.
+          mkdir -p "$RUNNER_TEMP/mingw-bin"
+          ln -sf "$LLVM_MINGW"/bin/*-w64-mingw32-* "$RUNNER_TEMP/mingw-bin/"
+          echo "$RUNNER_TEMP/mingw-bin" >> "$GITHUB_PATH"
 
       - name: Install ccache
         run: |
