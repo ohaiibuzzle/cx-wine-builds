@@ -206,6 +206,12 @@ jobs:
         working-directory: ${{ runner.temp }}/wine-build
         run: make install
 
+      # Copies the Homebrew dylibs Wine links or dlopen()s into $WINE_PREFIX/lib
+      # and rewrites everything to @rpath, so the artifact runs without Homebrew
+      # and from any location. Fails if anything still points outside the prefix.
+      - name: Bundle dependencies
+        run: python3 scripts/bundle-deps.py "$WINE_PREFIX"
+
       - name: Package
         run: |
           tar -C "$(dirname "$WINE_PREFIX")" -cJf "$RUNNER_TEMP/wine-cx-$CX_VERSION-x86_64.tar.xz" "$(basename "$WINE_PREFIX")"
