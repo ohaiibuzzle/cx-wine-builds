@@ -28,8 +28,10 @@ if command -v ccache >/dev/null; then
     export i386_CC="ccache i686-w64-mingw32-clang"
     export x86_64_CC="ccache x86_64-w64-mingw32-clang"
 fi
-# No CPPFLAGS/LDFLAGS: /usr/local is already on clang's and ld64's default
-# search paths on Intel, and an explicit -I would shadow pkg-config's.
+# No CPPFLAGS: /usr/local is already on clang's default search path on Intel,
+# and an explicit -I would shadow pkg-config's. LDFLAGS only adds our prefix,
+# for the libMoltenVK soname check (MoltenVK has no .pc file).
+export LDFLAGS="-L$WINE_PREFIX/lib"
 
 required=(
     --with-mingw        # llvm-mingw for the i386/x86_64 PE side
@@ -43,7 +45,7 @@ required=(
     --with-pcsclite     # PCSC.framework
     --with-unwind       # libunwind in libSystem
     --with-sdl
-    --with-vulkan       # MoltenVK
+    --with-vulkan       # CrossOver's MoltenVK, built into $WINE_PREFIX/lib
     --with-usb
     --with-krb5
     --with-gssapi
