@@ -11,6 +11,8 @@ env:
   FFMPEG_SHA256: 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
   CCACHE_VERSION: 4.14.1
   CCACHE_SHA256: c279fa81e2e806b4d9e64d4a06cb569a84ef54151feef796e5d4f4e95a464563
+  MESA_VERSION: 26.2.4
+  MESA_SHA256: bce5f7fbebb934373b86c999a064d52fb5065878dc57f287f95346648ec832e9
   CCACHE_COMPILERCHECK: content
   CCACHE_MAXSIZE: 3G
   # Sources are re-extracted every run; don't let fresh mtimes defeat direct mode.
@@ -24,7 +26,40 @@ env:
   HOMEBREW_NO_ENV_HINTS: 1
 
 jobs:
+  # KosmicKrisp's build-time CLC tools need LLVM/libclc/SPIRV-LLVM-Translator,
+  # which Homebrew only bottles for arm64, and the driver needs the macOS 26
+  # SDK (Metal 4). So it's built here and cross-compiled to x86_64.
+  kosmickrisp:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache KosmicKrisp
+        id: kkcache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/kosmickrisp-out
+          key: kosmickrisp-${{ env.MESA_VERSION }}-${{ hashFiles('scripts/build-kosmickrisp.sh') }}
+
+      - name: Install build dependencies
+        if: steps.kkcache.outputs.cache-hit != 'true'
+        run: brew install --quiet llvm libclc spirv-llvm-translator spirv-tools pkgconf bison flex ninja
+
+      - name: Build KosmicKrisp (x86_64)
+        if: steps.kkcache.outputs.cache-hit != 'true'
+        env:
+          OUT: ${{ runner.temp }}/kosmickrisp-out
+        run: ./scripts/build-kosmickrisp.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kosmickrisp-${{ env.MESA_VERSION }}-x86_64
+          path: ${{ runner.temp }}/kosmickrisp-out/lib/libvulkan_kosmickrisp.dylib
+          if-no-files-found: error
+
   build:
+    needs: kosmickrisp
     # x86_64 host so the result runs under Rosetta like real CrossOver.
     # macos-15-intel is the last free Intel runner; Homebrew only has
     # x86_64 bottles up to Sonoma, which still install on Sequoia.
@@ -167,6 +202,13 @@ jobs:
           path: ${{ env.WINE_PREFIX }}
           key: ${{ steps.depskey.outputs.key }}
 
+      # After the deps cache save, so a Mesa bump doesn't invalidate FFmpeg & co.
+      - name: Add KosmicKrisp
+        uses: actions/download-artifact@v8
+        with:
+          name: kosmickrisp-${{ env.MESA_VERSION }}-x86_64
+          path: ${{ env.WINE_PREFIX }}/lib
+
       - name: Restore ccache
         uses: actions/cache/restore@v6
         with:
@@ -209,6 +251,9 @@ jobs:
       - name: Install Wine
         working-directory: ${{ runner.temp }}/wine-build
         run: make install
+
+      - name: Install Vulkan ICD manifests
+        run: ./scripts/install-vulkan-icds.sh
 
       # Copies the Homebrew dylibs Wine links or dlopen()s into $WINE_PREFIX/lib
       # and rewrites everything to @rpath, so the artifact runs without Homebrew

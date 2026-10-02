@@ -1,0 +1,59 @@
+From: OHaiiBuzzle <ohaibuzzle@gmail.com>
+Subject: [PATCH] win32u: Point the Vulkan loader at the bundled ICD manifests.
+
+wine-cx links Wine against the Khronos loader so the bundled MoltenVK and
+KosmicKrisp drivers can coexist. Their manifests ship in
+<prefix>/share/vulkan/icd.d, which the loader doesn't search, so default
+VK_DRIVER_FILES to MoltenVK's (or KosmicKrisp's with
+WINE_VK_DRIVER=kosmickrisp) when the user hasn't chosen drivers themselves.
+---
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -2993,7 +2993,38 @@
+     .p_map_instance_extensions = lazydrv_map_instance_extensions,
+     .p_map_device_extensions = lazydrv_map_device_extensions,
+ };
++
++/* wine-cx: SONAME_LIBVULKAN is the Khronos loader, and the ICD manifests ship
++ * in <prefix>/share/vulkan/icd.d, which the loader doesn't search. Point it at
++ * MoltenVK, or at KosmicKrisp with WINE_VK_DRIVER=kosmickrisp, unless the user
++ * already picked drivers through the loader's own variables. */
++static void set_default_vulkan_driver(void)
++{
++    static const char *loader_vars[] = { "VK_DRIVER_FILES", "VK_ICD_FILENAMES", "VK_ADD_DRIVER_FILES" };
++    const char *driver = getenv( "WINE_VK_DRIVER" ), *manifest;
++    unsigned int i, levels;
++    Dl_info info;
++    char *path, *p;
+ 
++    for (i = 0; i < ARRAY_SIZE(loader_vars); i++) if (getenv( loader_vars[i] )) return;
++
++    manifest = driver && !strcmp( driver, "kosmickrisp" ) ? "kosmickrisp_icd.json" : "moltenvk_icd.json";
++
++    /* <prefix>/lib/wine/x86_64-unix/win32u.so */
++    if (!dladdr( set_default_vulkan_driver, &info ) || !info.dli_fname) return;
++    if (!(path = malloc( strlen( info.dli_fname ) + sizeof("/share/vulkan/icd.d/") + strlen( manifest ) ))) return;
++    strcpy( path, info.dli_fname );
++    for (levels = 0; levels < 4 && (p = strrchr( path, '/' )); levels++) *p = 0;
++    if (levels == 4)
++    {
++        strcat( path, "/share/vulkan/icd.d/" );
++        strcat( path, manifest );
++        TRACE( "using %s\n", debugstr_a(path) );
++        setenv( "VK_DRIVER_FILES", path, 0 );
++    }
++    free( path );
++}
++
+ static void vulkan_init_once(void)
+ {
+     struct vulkan_instance_extensions extensions = {0};
+@@ -3010,6 +3041,8 @@
+     else
+         ERR( "Using %s\n", libvulkan );
+ 
++    set_default_vulkan_driver();
++
+     if (!(vulkan_handle = dlopen( libvulkan, RTLD_NOW )))
+     {
+         ERR( "Failed to load %s: %s\n", libvulkan, dlerror() );

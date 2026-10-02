@@ -30,7 +30,8 @@ if command -v ccache >/dev/null; then
 fi
 # No CPPFLAGS: /usr/local is already on clang's default search path on Intel,
 # and an explicit -I would shadow pkg-config's. LDFLAGS only adds our prefix,
-# for the libMoltenVK soname check (MoltenVK has no .pc file).
+# for configure's libMoltenVK fallback; with Homebrew's vulkan-loader installed
+# the libvulkan check wins and that fallback never runs.
 export LDFLAGS="-L$WINE_PREFIX/lib"
 
 required=(
@@ -45,7 +46,7 @@ required=(
     --with-pcsclite     # PCSC.framework
     --with-unwind       # libunwind in libSystem
     --with-sdl
-    --with-vulkan       # CrossOver's MoltenVK, built into $WINE_PREFIX/lib
+    --with-vulkan       # Khronos loader -> MoltenVK or KosmicKrisp (see install-vulkan-icds.sh)
     --with-usb
     --with-krb5
     --with-gssapi
@@ -82,3 +83,8 @@ not_on_macos=(
     "${required[@]}" \
     "${not_on_macos[@]}" \
     2>&1 | tee configure.out
+
+# Without the loader, configure silently falls back to linking libMoltenVK
+# directly and the KosmicKrisp ICD would never be reachable.
+grep -q '^#define SONAME_LIBVULKAN "libvulkan\.1\.dylib"' include/config.h ||
+    { grep SONAME_LIBVULKAN include/config.h >&2; echo "Wine isn't using the Vulkan loader" >&2; exit 1; }

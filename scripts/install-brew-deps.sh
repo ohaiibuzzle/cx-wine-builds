@@ -24,6 +24,7 @@ wine_deps=(
     sane-backends   # scanners
     libgphoto2      # cameras
     unixodbc        # odbc32
+    vulkan-loader   # libvulkan.1.dylib; picks MoltenVK or KosmicKrisp via ICD manifests
 )
 
 media_deps=(
