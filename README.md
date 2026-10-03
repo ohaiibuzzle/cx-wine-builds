@@ -43,3 +43,27 @@ MoltenVK, and both drivers ship with manifests in `share/vulkan/icd.d`:
 
 Setting `VK_DRIVER_FILES`, `VK_ICD_FILENAMES` or `VK_ADD_DRIVER_FILES`
 yourself overrides both (`patches/wine/0006`).
+
+## DXVK for KosmicKrisp
+
+`lib/dxvk/{x64,x32}` holds DXVK 2.7.1 with `patches/dxvk` applied. It's
+built separately and not installed over Wine's own d3d/dxgi:
+
+| Patch | Why |
+|---|---|
+| 0001, 0002 | upstream build fixes for LLVM 22/23 (llvm-mingw 20260922) |
+| 0003 | upstream: `VK_KHR_pipeline_library` is optional |
+| 0004 | `fillModeNonSolid` is optional; wireframe/point fill renders solid without it |
+
+KosmicKrisp still needs geometry shaders for this to work (DXVK requires
+them for all of D3D8–11), i.e. a Mesa with
+[!44786](https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/44786).
+CrossOver's MoltenVK won't work either way: DXVK 2.x needs Vulkan 1.3.
+
+To use it in a prefix:
+
+```sh
+cp lib/dxvk/x64/*.dll "$WINEPREFIX/drive_c/windows/system32/"
+cp lib/dxvk/x32/*.dll "$WINEPREFIX/drive_c/windows/syswow64/"
+WINE_VK_DRIVER=kosmickrisp WINEDLLOVERRIDES="d3d8,d3d9,d3d10core,d3d11,dxgi=n,b" wine game.exe
+```

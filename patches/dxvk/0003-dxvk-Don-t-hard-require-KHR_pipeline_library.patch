@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Philip Rebohle <philip.rebohle@tu-dortmund.de>
+Date: Sun, 4 Oct 2026 02:24:38 +0900
+Subject: [PATCH 3/4] [dxvk] Don't hard-require KHR_pipeline_library
+
+Derp.
+
+(cherry picked from commit 3a57d414db3a14f2d43fe69285bba78a06bd035b)
+---
+ src/dxvk/dxvk_device_info.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/dxvk/dxvk_device_info.cpp b/src/dxvk/dxvk_device_info.cpp
+index 9a45f10..ed2f943 100644
+--- a/src/dxvk/dxvk_device_info.cpp
++++ b/src/dxvk/dxvk_device_info.cpp
+@@ -875,7 +875,7 @@ namespace dxvk {
+       ENABLE_EXT_FEATURE(khrMaintenance7, maintenance7, false),
+ 
+       /* Dependency for graphics pipeline library */
+-      ENABLE_EXT(khrPipelineLibrary, true),
++      ENABLE_EXT(khrPipelineLibrary, false),
+ 
+       /* Present wait, used for frame pacing and statistics */
+       ENABLE_EXT_FEATURE(khrPresentId, presentId, false),

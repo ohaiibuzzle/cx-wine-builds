@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OHaiiBuzzle <ohaibuzzle@gmail.com>
+Date: Sun, 4 Oct 2026 02:25:05 +0900
+Subject: [PATCH 4/4] [dxvk] Don't hard-require fillModeNonSolid
+
+KosmicKrisp (Mesa's Vulkan-on-Metal driver) doesn't expose it, and it's the
+last hard requirement besides geometry shaders keeping DXVK from running
+there. Without the feature, VK_POLYGON_MODE_LINE and _POINT are invalid,
+so fall back to solid fill: D3D wireframe and point fill modes render solid
+on such drivers instead of failing device creation.
+
+The clamp happens where the rasterizer state enters the pipeline state, so
+pipeline hashing, line rasterization and base pipeline selection all see
+the mode that's actually used.
+---
+ src/dxvk/dxvk_context.cpp     | 14 +++++++++++++-
+ src/dxvk/dxvk_context_state.h |  1 +
+ src/dxvk/dxvk_device_info.cpp |  2 +-
+ 3 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/src/dxvk/dxvk_context.cpp b/src/dxvk/dxvk_context.cpp
+index 7722f12..ffe2002 100644
+--- a/src/dxvk/dxvk_context.cpp
++++ b/src/dxvk/dxvk_context.cpp
+@@ -59,6 +59,12 @@ namespace dxvk {
+     if (m_device->features().core.features.variableMultisampleRate)
+       m_features.set(DxvkContextFeature::VariableMultisampleRate);
+ 
++    // Line and point fill modes are only valid with fillModeNonSolid.
++    // Some drivers lack it (e.g. KosmicKrisp); there, wireframe and
++    // point fill render solid instead
++    if (m_device->features().core.features.fillModeNonSolid)
++      m_features.set(DxvkContextFeature::NonSolidFillMode);
++
+     // Check whether we can batch direct draws
+     if (m_device->features().extMultiDraw.multiDraw
+      && m_device->properties().extMultiDraw.maxMultiDrawCount >= DirectMultiDrawBatchSize)
+@@ -2888,9 +2894,15 @@ namespace dxvk {
+         m_flags.set(DxvkContextFlag::GpRenderPassNeedsFlush);
+     }
+ 
++    VkPolygonMode polygonMode = rs.polygonMode();
++
++    if (unlikely(polygonMode != VK_POLYGON_MODE_FILL
++     && !m_features.test(DxvkContextFeature::NonSolidFillMode)))
++      polygonMode = VK_POLYGON_MODE_FILL;
++
+     DxvkRsInfo rsInfo(
+       rs.depthClip(),
+-      rs.polygonMode(),
++      polygonMode,
+       rs.sampleCount(),
+       rs.conservativeMode(),
+       rs.flatShading(),
+diff --git a/src/dxvk/dxvk_context_state.h b/src/dxvk/dxvk_context_state.h
+index f0767b4..e4bfb56 100644
+--- a/src/dxvk/dxvk_context_state.h
++++ b/src/dxvk/dxvk_context_state.h
+@@ -82,6 +82,7 @@ namespace dxvk {
+     DebugUtils,
+     DirectMultiDraw,
+     DescriptorBuffer,
++    NonSolidFillMode,
+     FeatureCount
+   };
+ 
+diff --git a/src/dxvk/dxvk_device_info.cpp b/src/dxvk/dxvk_device_info.cpp
+index ed2f943..71cdb68 100644
+--- a/src/dxvk/dxvk_device_info.cpp
++++ b/src/dxvk/dxvk_device_info.cpp
+@@ -711,7 +711,7 @@ namespace dxvk {
+       ENABLE_FEATURE(core.features, depthClamp, true),
+       ENABLE_FEATURE(core.features, drawIndirectFirstInstance, false),
+       ENABLE_FEATURE(core.features, dualSrcBlend, true),
+-      ENABLE_FEATURE(core.features, fillModeNonSolid, true),
++      ENABLE_FEATURE(core.features, fillModeNonSolid, false),
+       ENABLE_FEATURE(core.features, fragmentStoresAndAtomics, false),
+       ENABLE_FEATURE(core.features, fullDrawIndexUint32, true),
+       ENABLE_FEATURE(core.features, geometryShader, true),

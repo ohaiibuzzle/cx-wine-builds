@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jacek Caban <jacek@codeweavers.com>
+Date: Sun, 4 Oct 2026 02:27:12 +0900
+Subject: [PATCH 2/4] [util] Add missing includes
+
+Fixes compilation with LLVM 23, where libc++ no longer indirectly includes those.
+
+(cherry picked from commit 1db34b5647026dab792a950dfeb8566ad5076a2a, util_small_vector.h hunk adapted to 2.7.1's includes)
+---
+ src/util/config/config.cpp   | 1 +
+ src/util/util_small_vector.h | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/src/util/config/config.cpp b/src/util/config/config.cpp
+index f6f9d6d..81e93f8 100644
+--- a/src/util/config/config.cpp
++++ b/src/util/config/config.cpp
+@@ -1,3 +1,4 @@
++#include <algorithm>
+ #include <array>
+ #include <fstream>
+ #include <sstream>
+diff --git a/src/util/util_small_vector.h b/src/util/util_small_vector.h
+index 861c9e0..f2f5fec 100644
+--- a/src/util/util_small_vector.h
++++ b/src/util/util_small_vector.h
+@@ -2,6 +2,7 @@
+ 
+ #include <cstddef>
+ #include <cstdint>
++#include <new>
+ #include <type_traits>
+ #include <utility>
+ 
