@@ -14,9 +14,15 @@
 # The driver only runs on Apple silicon with macOS 26+ (Metal 4); under
 # Rosetta it still talks to the Apple GPU.
 #
+# Source: a release tarball (MESA_VERSION + MESA_SHA256), or, when
+# MESA_GIT_SHA is set, that exact commit from mesa/mesa. Unmerged MR heads
+# are fetchable there too (GitLab mirrors them as refs/merge-requests/*).
+# A shallow fetch by hash rather than a GitLab archive: the archives are
+# generated on the fly and not guaranteed byte-stable, while git verifies
+# the commit's content itself.
+#
 # Output: $OUT/lib/libvulkan_kosmickrisp.dylib
 set -euo pipefail
-: "${MESA_VERSION:?}" "${MESA_SHA256:?}"
 
 work="${RUNNER_TEMP:-/tmp}/kosmickrisp"
 out="${OUT:-$work/out}"
@@ -27,11 +33,23 @@ rm -rf "$work"
 mkdir -p "$work" "$out/lib"
 cd "$work"
 
-curl -fL --retry 3 -o "mesa-$MESA_VERSION.tar.xz" \
-    "https://archive.mesa3d.org/mesa-$MESA_VERSION.tar.xz"
-echo "$MESA_SHA256  mesa-$MESA_VERSION.tar.xz" | shasum -a 256 -c -
-tar -xJf "mesa-$MESA_VERSION.tar.xz"
-src="$work/mesa-$MESA_VERSION"
+if [ -n "${MESA_GIT_SHA:-}" ]; then
+    src="$work/mesa-$MESA_GIT_SHA"
+    git init -q "$src"
+    git -C "$src" fetch -q --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git "$MESA_GIT_SHA"
+    git -C "$src" checkout -q FETCH_HEAD
+    [ "$(git -C "$src" rev-parse HEAD)" = "$MESA_GIT_SHA" ] ||
+        { echo "fetched $(git -C "$src" rev-parse HEAD), wanted $MESA_GIT_SHA" >&2; exit 1; }
+    git -C "$src" log -1 --format='Mesa %H (%cs): %s'
+else
+    : "${MESA_VERSION:?}" "${MESA_SHA256:?}"
+    curl -fL --retry 3 -o "mesa-$MESA_VERSION.tar.xz" \
+        "https://archive.mesa3d.org/mesa-$MESA_VERSION.tar.xz"
+    echo "$MESA_SHA256  mesa-$MESA_VERSION.tar.xz" | shasum -a 256 -c -
+    tar -xJf "mesa-$MESA_VERSION.tar.xz"
+    src="$work/mesa-$MESA_VERSION"
+fi
+cat "$src/VERSION"
 
 python3 -m venv "$work/venv"
 "$work/venv/bin/pip" install --quiet mako packaging pyyaml 'meson>=1.9.1'

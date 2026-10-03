@@ -13,6 +13,10 @@ env:
   CCACHE_SHA256: c279fa81e2e806b4d9e64d4a06cb569a84ef54151feef796e5d4f4e95a464563
   MESA_VERSION: 26.2.4
   MESA_SHA256: bce5f7fbebb934373b86c999a064d52fb5065878dc57f287f95346648ec832e9
+  # Overrides the release above when set. Currently the head of
+  # mesa/mesa!44786 ("kk: Add geometry shader support", unmerged); clear it
+  # to go back to MESA_VERSION.
+  MESA_GIT_SHA: 2d1ea84b3ea481d312a3a022f2463e9acb905b18
   CCACHE_COMPILERCHECK: content
   CCACHE_MAXSIZE: 3G
   # Sources are re-extracted every run; don't let fresh mtimes defeat direct mode.
@@ -40,7 +44,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/kosmickrisp-out
-          key: kosmickrisp-${{ env.MESA_VERSION }}-${{ hashFiles('scripts/build-kosmickrisp.sh') }}
+          key: kosmickrisp-${{ env.MESA_GIT_SHA || env.MESA_VERSION }}-${{ hashFiles('scripts/build-kosmickrisp.sh') }}
 
       - name: Install build dependencies
         if: steps.kkcache.outputs.cache-hit != 'true'
@@ -54,7 +58,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: kosmickrisp-${{ env.MESA_VERSION }}-x86_64
+          name: kosmickrisp-x86_64
           path: ${{ runner.temp }}/kosmickrisp-out/lib/libvulkan_kosmickrisp.dylib
           if-no-files-found: error
 
@@ -206,7 +210,7 @@ jobs:
       - name: Add KosmicKrisp
         uses: actions/download-artifact@v8
         with:
-          name: kosmickrisp-${{ env.MESA_VERSION }}-x86_64
+          name: kosmickrisp-x86_64
           path: ${{ env.WINE_PREFIX }}/lib
 
       - name: Restore ccache

@@ -18,7 +18,7 @@ for macOS, without X11.
 | FFmpeg 9.0.2 (winedmo) | built from source | enabled |
 | GStreamer 1.24 core/base/good | built from the CrossOver-bundled tree | enabled |
 | MoltenVK 1.2.10 (CodeWeavers-patched) | built from the CrossOver-bundled tree | enabled, default Vulkan driver |
-| KosmicKrisp (Mesa 26.2.4) | cross-built to x86_64 on an arm64 runner | enabled, opt-in |
+| KosmicKrisp (Mesa main + [!44786](https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/44786) geometry shaders, pinned by `MESA_GIT_SHA`) | cross-built to x86_64 on an arm64 runner | enabled, opt-in |
 | X11 | – | disabled on purpose |
 | EGL | – | not available; only used by the X11/Wayland drivers |
 | Wayland, ALSA, OSS, udev, V4L2, CAPI | – | Linux only |
